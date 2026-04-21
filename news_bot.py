@@ -23,11 +23,11 @@ def fetch_articles():
     for url in RSS_FEEDS:
         try:
             feed = feedparser.parse(url, request_headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
-            for entry in feed.entries[:5]:  # 每个源最多取5条最新
+            for entry in feed.entries[:5]:
                 articles.append({
                     "title": entry.get("title", "无标题"),
                     "link": entry.get("link", ""),
-                    "summary": entry.get("summary", "")[:200],  # 截取前200字符
+                    "summary": entry.get("summary", "")[:200],
                     "source": feed.feed.get("title", url)
                 })
         except Exception as e:
@@ -35,7 +35,6 @@ def fetch_articles():
     return articles
 
 def ask_deepseek(articles, api_key):
-    # 组装提示词（这里省略，保持你原来的就行）
     prompt = f"""你是半导体行业分析师。今天是{datetime.now().strftime('%Y-%m-%d')}。
 请根据以下新闻标题和摘要，生成一份简洁的早报，每条新闻用一句话概括发生了什么，并附上原文链接。
 按重要性排序。最后加一段总结。
@@ -57,7 +56,7 @@ def ask_deepseek(articles, api_key):
     }
     try:
         resp = requests.post("https://api.deepseek.com/v1/chat/completions", headers=headers, json=payload, timeout=60)
-        resp.raise_for_status()  # 如果状态码不是200，会抛出异常
+        resp.raise_for_status()
         data = resp.json()
         if "choices" in data and len(data["choices"]) > 0:
             return data["choices"][0]["message"]["content"]
@@ -69,3 +68,46 @@ def ask_deepseek(articles, api_key):
         raise Exception("DeepSeek API 请求超时（60秒）")
     except requests.exceptions.RequestException as e:
         raise Exception(f"DeepSeek API 请求失败: {e}")
+
+def send_wechat(content, token):
+    url = "http://www.pushplus.plus/send"
+    data = {
+        "token": token,
+        "title": f"半导体早报 {datetime.now().strftime('%Y-%m-%d')}",
+        "content": content,
+        "template": "markdown"
+    }
+    try:
+        resp = requests.post(url, json=data, timeout=10)
+        print(f"微信推送响应: {resp.json()}")
+    except Exception as e:
+        print(f"微信推送失败: {e}")
+
+if __name__ == "__main__":
+    print("MAIN ENTERED", flush=True)
+    print("开始抓取新闻...")
+    arts = fetch_articles()
+    print(f"抓取到 {len(arts)} 条原始新闻")
+    if not arts:
+        print("无新闻，退出")
+        exit(0)
+    
+    api_key = os.environ.get("DEEPSEEK_API_KEY")
+    if not api_key:
+        print("错误：未设置 DEEPSEEK_API_KEY 环境变量")
+        exit(1)
+    print("调用DeepSeek生成摘要...")
+    try:
+        report = ask_deepseek(arts, api_key)
+        print("DeepSeek 返回成功")
+    except Exception as e:
+        print(f"DeepSeek API 调用失败: {e}")
+        exit(1)
+    
+    token = os.environ.get("PUSHPLUS_TOKEN")
+    if token:
+        send_wechat(report, token)
+        print("已发送到微信")
+    else:
+        print("未设置 PUSHPLUS_TOKEN，仅打印报告：")
+        print(report)
