@@ -21,7 +21,7 @@ def fetch_articles():
     articles = []
     for url in RSS_FEEDS:
         try:
-            feed = feedparser.parse(url)
+            feed = feedparser.parse(url, request_headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
             for entry in feed.entries[:5]:  # 每个源最多取5条最新
                 articles.append({
                     "title": entry.get("title", "无标题"),
@@ -34,14 +34,14 @@ def fetch_articles():
     return articles
 
 def ask_deepseek(articles, api_key):
-    # 组装提示词
+    # 组装提示词（这里省略，保持你原来的就行）
     prompt = f"""你是半导体行业分析师。今天是{datetime.now().strftime('%Y-%m-%d')}。
 请根据以下新闻标题和摘要，生成一份简洁的早报，每条新闻用一句话概括发生了什么，并附上原文链接。
 按重要性排序。最后加一段总结。
 
 新闻列表：
 """
-    for idx, art in enumerate(articles[:30], 1):  # 最多处理30条
+    for idx, art in enumerate(articles[:30], 1):
         prompt += f"{idx}. {art['title']} | {art['summary']} | 链接：{art['link']}\n"
     prompt += "\n请输出Markdown格式，标题为【半导体早报】，不要多余的解释。"
 
@@ -54,36 +54,17 @@ def ask_deepseek(articles, api_key):
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.3,
     }
-    resp = requests.post("https://api.deepseek.com/v1/chat/completions", headers=headers, json=payload)
-    return resp.json()["choices"][0]["message"]["content"]
-
-def send_wechat(content, token):
-    url = "http://www.pushplus.plus/send"
-    data = {
-        "token": token,
-        "title": f"半导体早报 {datetime.now().strftime('%Y-%m-%d')}",
-        "content": content,
-        "template": "markdown"
-    }
-    requests.post(url, json=data)
-
-if __name__ == "__main__":
-    print("开始抓取新闻...")
-    arts = fetch_articles()
-    print(f"抓取到 {len(arts)} 条原始新闻")
-    if not arts:
-        print("无新闻，退出")
-        exit(0)
-    
-    api_key = os.environ["DEEPSEEK_API_KEY"]
-    print("调用DeepSeek生成摘要...")
-    report = ask_deepseek(arts, api_key)
-    
-    # 发送到微信（如果你选择PushPlus）
-    token = os.environ.get("PUSHPLUS_TOKEN")
-    if token:
-        send_wechat(report, token)
-        print("已发送到微信")
-    else:
-        print("未设置PUSHPLUS_TOKEN，仅打印报告：")
-        print(report)
+    try:
+        resp = requests.post("https://api.deepseek.com/v1/chat/completions", headers=headers, json=payload, timeout=60)
+        resp.raise_for_status()  # 如果状态码不是200，会抛出异常
+        data = resp.json()
+        if "choices" in data and len(data["choices"]) > 0:
+            return data["choices"][0]["message"]["content"]
+        elif "error" in data:
+            raise Exception(f"API错误: {data['error']}")
+        else:
+            raise Exception(f"未知响应格式: {data}")
+    except requests.exceptions.Timeout:
+        raise Exception("DeepSeek API 请求超时（60秒）")
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"DeepSeek API 请求失败: {e}")
