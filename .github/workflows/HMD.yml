@@ -25,6 +25,12 @@ jobs:
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
-          # EMAIL_SMTP_SERVER: ${{ secrets.EMAIL_SMTP_SERVER }}
-          # EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
-        run: python news_bot.py
+        run: |
+          echo "当前目录内容："
+          ls -la
+          echo "Python 版本："
+          python --version
+          echo "测试 Python 能否正常打印："
+          python -c "print('hello from python')"
+          echo "开始执行 news_bot.py："
+          python news_bot.py
