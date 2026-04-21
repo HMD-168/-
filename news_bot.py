@@ -1,3 +1,4 @@
+print("SCRIPT STARTED", flush=True)
 import feedparser
 import requests
 import os
