@@ -22,7 +22,10 @@ def fetch_articles():
     articles = []
     for url in RSS_FEEDS:
         try:
-           feed = feedparser.parse(url, request_headers={"User-Agent": "Mozilla/5.0"})
+            # 先用 requests 获取内容，设置超时
+            resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
+            resp.raise_for_status()
+            feed = feedparser.parse(resp.content)
             for entry in feed.entries[:5]:
                 articles.append({
                     "title": entry.get("title", "无标题"),
