@@ -73,18 +73,20 @@ def ask_deepseek(articles, api_key):
         raise Exception(f"DeepSeek API 请求失败: {e}")
 
 def send_wechat(content, token):
-    url = "http://www.pushplus.plus/send"
+    # Server酱 官方 API 地址
+    url = f"https://sctapi.ftqq.com/{token}.send"
+    
+    # 准备发送的数据，只需要标题和内容
     data = {
-        "token": token,
         "title": f"半导体早报 {datetime.now().strftime('%Y-%m-%d')}",
-        "content": content,
-        "template": "markdown"
+        "desp": content,  # 注意参数是 desp，不是 content
     }
     try:
-        resp = requests.post(url, json=data, timeout=10)
-        print(f"微信推送响应: {resp.json()}")
+        # 发送 POST 请求，Server酱 也接受 GET 请求，但用 POST 更通用
+        resp = requests.post(url, data=data, timeout=10)
+        print(f"Server酱 推送响应: {resp.json()}")
     except Exception as e:
-        print(f"微信推送失败: {e}")
+        print(f"Server酱 推送失败: {e}")
 
 if __name__ == "__main__":
     print("MAIN ENTERED", flush=True)
