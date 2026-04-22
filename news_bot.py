@@ -5,7 +5,7 @@ import os
 import json
 from datetime import datetime
 
-# ---------- 你的RSS源列表（可根据需要增删）----------
+# ---------- RSS源列表 ----------
 RSS_FEEDS = [
     "https://www.semiinsights.com/feed",          # 半导体行业观察
     "https://www.jiweicn.com/rss",                # 集微网
@@ -18,34 +18,61 @@ RSS_FEEDS = [
     "https://news.samsung.com/global/rss",        # 三星
 ]
 
-def fetch_articles():
+def fetch_articles(limit_per_source=10):
+    """每个源最多抓取 limit_per_source 条，返回文章列表"""
     articles = []
     for url in RSS_FEEDS:
         try:
-            # 先用 requests 获取内容，设置超时
             resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
             resp.raise_for_status()
             feed = feedparser.parse(resp.content)
-            for entry in feed.entries[:5]:
+            for entry in feed.entries[:limit_per_source]:
                 articles.append({
                     "title": entry.get("title", "无标题"),
                     "link": entry.get("link", ""),
                     "summary": entry.get("summary", "")[:200],
-                    "source": feed.feed.get("title", url)
+                    "source": feed.feed.get("title", url),
+                    "published": entry.get("published", "")
                 })
         except Exception as e:
             print(f"抓取失败 {url}: {e}")
     return articles
 
+def calculate_hot_score(article):
+    """热度评分：来源权重 + 关键词匹配"""
+    title = article['title'].lower()
+    source = article['source'].lower()
+    score = 0
+    # 高权重来源
+    high_sources = ["reuters", "eetimes", "semiengineering", "华尔街见闻", "路透", "semiconductor"]
+    for hs in high_sources:
+        if hs in source:
+            score += 10
+            break
+    # 热门关键词
+    keywords = ["ai", "芯片", "制裁", "突破", "收购", "财报", "台积电", "中芯国际", "存储", 
+                "nvidia", "intel", "amd", "asml", "华为", "量子", "产能", "涨价", "禁令", "补贴"]
+    for kw in keywords:
+        if kw in title:
+            score += 2
+    return score
+
 def ask_deepseek(articles, api_key):
+    """调用 DeepSeek API 生成早报"""
+    # 构建提示词，要求突出前10条为热门
     prompt = f"""你是半导体行业分析师。今天是{datetime.now().strftime('%Y-%m-%d')}。
-请根据以下新闻标题和摘要，生成一份简洁的早报，每条新闻用一句话概括发生了什么，并附上原文链接。
-按重要性排序。最后加一段总结。
+请根据以下新闻标题和摘要，生成一份简洁的早报。
+要求：
+- 总共 {len(articles)} 条新闻，其中前10条是🔥热门新闻，请在标题前标注【热门】。
+- 每条新闻用一句话概括发生了什么，并附上原文链接。
+- 按重要性排序（热门新闻在前）。
+- 最后加一段总结。
 
 新闻列表：
 """
-    for idx, art in enumerate(articles[:30], 1):
-        prompt += f"{idx}. {art['title']} | {art['summary']} | 链接：{art['link']}\n"
+    for idx, art in enumerate(articles, 1):
+        tag = "🔥热门 " if idx <= 10 else ""
+        prompt += f"{idx}. {tag}{art['title']} | {art['summary']} | 链接：{art['link']}\n"
     prompt += "\n请输出Markdown格式，标题为【半导体早报】，不要多余的解释。"
 
     headers = {
@@ -73,16 +100,13 @@ def ask_deepseek(articles, api_key):
         raise Exception(f"DeepSeek API 请求失败: {e}")
 
 def send_wechat(content, token):
-    # Server酱 官方 API 地址
+    """通过 Server酱 推送消息"""
     url = f"https://sctapi.ftqq.com/{token}.send"
-    
-    # 准备发送的数据，只需要标题和内容
     data = {
         "title": f"半导体早报 {datetime.now().strftime('%Y-%m-%d')}",
-        "desp": content,  # 注意参数是 desp，不是 content
+        "desp": content,
     }
     try:
-        # 发送 POST 请求，Server酱 也接受 GET 请求，但用 POST 更通用
         resp = requests.post(url, data=data, timeout=10)
         print(f"Server酱 推送响应: {resp.json()}")
     except Exception as e:
@@ -91,28 +115,42 @@ def send_wechat(content, token):
 if __name__ == "__main__":
     print("MAIN ENTERED", flush=True)
     print("开始抓取新闻...")
-    arts = fetch_articles()
+    arts = fetch_articles(limit_per_source=10)   # 每个源最多10条
     print(f"抓取到 {len(arts)} 条原始新闻")
     if not arts:
         print("无新闻，退出")
         exit(0)
     
+    # 计算热度分，排序并取前10为热门，再取后续40条（总50条）
+    for art in arts:
+        art['hot_score'] = calculate_hot_score(art)
+    sorted_arts = sorted(arts, key=lambda x: x['hot_score'], reverse=True)
+    hot_news = sorted_arts[:10]
+    other_news = sorted_arts[10:50]   # 最多再取40条
+    final_news = hot_news + other_news
+    print(f"筛选后共 {len(final_news)} 条（其中热门 {len(hot_news)} 条）")
+    
     api_key = os.environ.get("DEEPSEEK_API_KEY")
     if not api_key:
         print("错误：未设置 DEEPSEEK_API_KEY 环境变量")
         exit(1)
+    
     print("调用DeepSeek生成摘要...")
     try:
-        report = ask_deepseek(arts, api_key)
+        report = ask_deepseek(final_news, api_key)
         print("DeepSeek 返回成功")
     except Exception as e:
         print(f"DeepSeek API 调用失败: {e}")
         exit(1)
     
-    token = os.environ.get("PUSHPLUS_TOKEN")
+    # 在日志中打印报告（方便直接查看）
+    print("=== 生成的早报内容 ===")
+    print(report)
+    print("=== 早报结束 ===")
+    
+    token = os.environ.get("PUSHPLUS_TOKEN")   # 注意：Secret 名字还是 PUSHPLUS_TOKEN，里面存的是 Server酱 的 SendKey
     if token:
         send_wechat(report, token)
         print("已发送到微信")
     else:
-        print("未设置 PUSHPLUS_TOKEN，仅打印报告：")
-        print(report)
+        print("未设置 PUSHPLUS_TOKEN，仅打印报告")
