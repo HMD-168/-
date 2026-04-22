@@ -5,7 +5,7 @@ import os
 import json
 from datetime import datetime
 
-# ---------- 半导体行业 RSS 源（目标 40 条）----------
+# ---------- 半导体行业 RSS 源（不限总数，每个源取最新 10 条）----------
 SEMI_RSS_FEEDS = [
     "https://www.semiinsights.com/feed",          # 半导体行业观察
     "https://www.jiweicn.com/rss",                # 集微网
@@ -16,31 +16,44 @@ SEMI_RSS_FEEDS = [
     "https://nvidianews.nvidia.com/news-releases/rss.xml", # 英伟达
     "https://pr.tsmc.com/rss",                    # 台积电
     "https://news.samsung.com/global/rss",        # 三星
-    # 可再补充几个中文科技媒体
     "https://www.ithome.com/rss/",                # IT之家
     "https://www.leiphone.com/feed",              # 雷锋网
+    "https://www.eet-china.com/feed",             # EET 电子工程专辑
+    "https://www.2ic.cn/feed",                    # 半导体技术天地
+    "https://www.moore.ren/feed",                 # 摩尔精英
 ]
 
-# ---------- 社会热点 RSS 源（国际+国内，目标 10 条）----------
+# ---------- 社会热点 RSS 源（至少 10 条）----------
 HOT_RSS_FEEDS = [
-    "http://feeds.reuters.com/reuters/worldNews",          # 路透国际新闻
-    "http://feeds.bbci.co.uk/news/world/rss.xml",          # BBC 世界新闻
-    "http://rss.caixin.com/rollnews.xml",                  # 财新网滚动新闻
-    "https://www.xinhuanet.com/fortune/news_newsroom_index_rss.xml", # 新华社（国内）
+    "http://feeds.reuters.com/reuters/worldNews",          # 路透国际
+    "http://feeds.bbci.co.uk/news/world/rss.xml",          # BBC 世界
+    "http://rss.caixin.com/rollnews.xml",                  # 财新网
+    "https://www.xinhuanet.com/fortune/news_newsroom_index_rss.xml", # 新华社
     "http://www.people.com.cn/rss/people.xml",             # 人民网
+    "https://www.guancha.cn/index.rss",                    # 观察者网
+    "https://www.thepaper.cn/rss_news.xml",                # 澎湃新闻
 ]
 
-def fetch_articles_from_sources(rss_list, limit_per_source=5, max_total=40):
-    """从 RSS 源列表抓取，每个源最多取 limit_per_source 条，总上限 max_total"""
+def fetch_articles_from_sources(rss_list, limit_per_source=10, min_total=None):
+    """
+    从 RSS 源列表抓取，每个源最多取 limit_per_source 条。
+    如果指定 min_total，则尽量确保总数 >= min_total（通过增加每个源条数）
+    """
     articles = []
+    # 如果要求最少条数，动态调整每个源的上限
+    if min_total:
+        # 粗略估算：需要抓取的源数量 * limit 至少达到 min_total
+        # 但简单起见，直接增加 limit_per_source 到 20 或更多
+        dynamic_limit = max(limit_per_source, min_total // len(rss_list) + 5)
+    else:
+        dynamic_limit = limit_per_source
+    
     for url in rss_list:
-        if len(articles) >= max_total:
-            break
         try:
             resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
             resp.raise_for_status()
             feed = feedparser.parse(resp.content)
-            for entry in feed.entries[:limit_per_source]:
+            for entry in feed.entries[:dynamic_limit]:
                 articles.append({
                     "title": entry.get("title", "无标题"),
                     "link": entry.get("link", ""),
@@ -50,18 +63,19 @@ def fetch_articles_from_sources(rss_list, limit_per_source=5, max_total=40):
                 })
         except Exception as e:
             print(f"抓取失败 {url}: {e}")
-    return articles[:max_total]
+    return articles
 
 def ask_deepseek(semi_articles, hot_articles, api_key):
-    """调用 DeepSeek 生成早报，分两个板块"""
+    """调用 DeepSeek 生成早报"""
     prompt = f"""你是信息分析师。今天是{datetime.now().strftime('%Y-%m-%d')}。
 请根据以下新闻，生成一份【半导体行业早报 + 社会热点速览】。
 
 要求：
-1. 先输出【半导体行业】（共{len(semi_articles)}条），每条用一句话概括 + 原文链接，按重要性排序。
-2. 然后输出【社会热点】（共{len(hot_articles)}条），每条用一句话概括 + 原文链接，按重要性排序。
+1. 先输出【半导体行业】板块（共{len(semi_articles)}条），每条用一句话概括发生了什么，并附上原文链接。
+   - 按重要性排序（优先半导体制造、芯片、存储、通信设备等核心领域）。
+2. 然后输出【社会热点】板块（共{len(hot_articles)}条），每条用一句话概括 + 原文链接，按重要性排序。
 3. 最后加一段总结。
-4. 整体使用 Markdown 格式，标题为【每日资讯简报】。
+4. 使用 Markdown 格式，标题为【每日资讯简报】。
 
 --- 半导体行业新闻 ---
 """
@@ -82,7 +96,7 @@ def ask_deepseek(semi_articles, hot_articles, api_key):
         "temperature": 0.3,
     }
     try:
-        resp = requests.post("https://api.deepseek.com/v1/chat/completions", headers=headers, json=payload, timeout=60)
+        resp = requests.post("https://api.deepseek.com/v1/chat/completions", headers=headers, json=payload, timeout=90)
         resp.raise_for_status()
         data = resp.json()
         if "choices" in data and len(data["choices"]) > 0:
@@ -92,7 +106,7 @@ def ask_deepseek(semi_articles, hot_articles, api_key):
         else:
             raise Exception(f"未知响应格式: {data}")
     except requests.exceptions.Timeout:
-        raise Exception("DeepSeek API 请求超时（60秒）")
+        raise Exception("DeepSeek API 请求超时（90秒）")
     except requests.exceptions.RequestException as e:
         raise Exception(f"DeepSeek API 请求失败: {e}")
 
@@ -112,12 +126,12 @@ def send_wechat(content, token):
 if __name__ == "__main__":
     print("MAIN ENTERED", flush=True)
     
-    print("开始抓取半导体新闻...")
-    semi_news = fetch_articles_from_sources(SEMI_RSS_FEEDS, limit_per_source=5, max_total=40)
+    print("开始抓取半导体新闻（不限数量，每个源最多10条）...")
+    semi_news = fetch_articles_from_sources(SEMI_RSS_FEEDS, limit_per_source=10)
     print(f"半导体新闻抓取到 {len(semi_news)} 条")
     
-    print("开始抓取社会热点...")
-    hot_news = fetch_articles_from_sources(HOT_RSS_FEEDS, limit_per_source=3, max_total=10)
+    print("开始抓取社会热点（至少10条）...")
+    hot_news = fetch_articles_from_sources(HOT_RSS_FEEDS, limit_per_source=5, min_total=10)
     print(f"社会热点抓取到 {len(hot_news)} 条")
     
     if not semi_news and not hot_news:
