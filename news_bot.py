@@ -8,48 +8,46 @@ from collections import OrderedDict
 
 # ---------- 半导体行业 RSS 源（每个源取 10 条）----------
 SEMI_RSS_FEEDS = [
-    # 中文半导体媒体
-    "https://www.semiinsights.com/feed",          # 半导体行业观察
-    "https://www.jiweicn.com/rss",                # 集微网
-    "https://www.eet-china.com/feed",             # EET电子工程专辑
-    "https://www.21ic.com/rss.xml",               # 21ic中国电子网
-    "https://www.elecfans.com/rss.xml",           # 电子发烧友
-    "https://www.eeworld.com.cn/rss/news",        # EEWorld电子工程世界
-    # 国内厂商官方新闻
-    "https://www.loongson.cn/rss",                # 龙芯中科
-    "https://www.ymtc.com/rss",                   # 长江存储
-    "https://www.smics.com/rss",                  # 中芯国际
-    "https://www.verisilicon.com/rss",            # 芯原股份
-    "https://www.idcquan.com/index/index_1.shtml/rss",            # IDC快讯
-    "https://www.toutiao.com/?channel=tech&source=ch/rss",            #  今日头条
-    # 国际但中文内容
-    "https://www.eetimes.com/feed",               # EE Times
-    "https://semiengineering.com/feed",           # Semiconductor Engineering
-    "https://wallstreetcn.com/news/rss",          # 华尔街见闻
+    # 已确认可用的中文源（海外可访问）
+    "https://wallstreetcn.com/news/rss",                # 华尔街见闻（你已成功）
+    "https://www.36kr.com/feed",                        # 36氪（科技新闻，含半导体）
+    "https://www.ithome.com/rss/",                      # IT之家（你列表中有）
+    # 通过 RSSHub 代理的国内源（稳定）
+    "https://rsshub.app/jiweicn/latest",                # 集微网最新（代理）
+    "https://rsshub.app/semiinsights",                  # 半导体行业观察（代理）
+    "https://rsshub.app/eet-china",                     # EET电子工程专辑（代理）
+    "https://rsshub.app/21ic/news",                     # 21ic中国电子网（代理）
+    "https://rsshub.app/elecfans/news",                 # 电子发烧友（代理）
+    "https://rsshub.app/eeworld/news",                  # EEWorld（代理）
+    # 官方源（部分可用）
+    "https://www.smics.com/cn/news.xml",                # 中芯国际中文新闻
+    "https://www.loongson.cn/news.xml",                 # 龙芯中科（需要确认）
 ]
 
-# ---------- 社会热点 RSS 源（分三类：战争/国际冲突、国内社会、生活）----------
+# 国际战争/冲突
 WAR_RSS_FEEDS = [
-    "http://feeds.reuters.com/reuters/worldNews",          # 路透国际（含战争）
-    "http://feeds.bbci.co.uk/news/world/rss.xml",          # BBC 世界
-    "https://www.aljazeera.com/xml/rss/news.xml",          # 半岛电视台
-    "https://www.defensenews.com/arc/outboundfeeds/rss/",  # Defense News
-    "https://www.globaltimes.cn/rss/world.xml",            # 环球时报国际
-]
-DOMESTIC_RSS_FEEDS = [
-    "http://rss.caixin.com/rollnews.xml",                  # 财新网
-    "https://www.thepaper.cn/rss_news.xml",                # 澎湃新闻
-    "http://www.people.com.cn/rss/people.xml",             # 人民网
-    "https://www.guancha.cn/index.rss",                    # 观察者网
-    "http://news.cctv.com/xml/news.xml",                   # 央视新闻
-]
-LIFE_RSS_FEEDS = [
-    "https://www.zhihu.com/rss",                           # 知乎（生活/热门）
-    "https://www.guokr.com/rss/",                          # 果壳网（生活科普）
-    "https://www.xiachufang.com/feed/",                    # 下厨房（美食生活）
-    "https://www.healthday.com/rss/",                      # 健康新闻
+    "http://feeds.bbci.co.uk/news/world/rss.xml",       # BBC 世界新闻（可靠）
+    "https://rsshub.app/reuters/world",                 # 路透国际（代理）
+    "https://rsshub.app/aljazeera",                     # 半岛电视台（代理）
+    "https://rsshub.app/globaltimes/world",             # 环球时报国际（代理）
 ]
 
+# 国内社会热点
+DOMESTIC_RSS_FEEDS = [
+    "https://rsshub.app/caixin/roll",                   # 财新网滚动（代理）
+    "https://rsshub.app/thepaper/featured",             # 澎湃新闻精选（代理）
+    "https://rsshub.app/people",                        # 人民网（代理）
+    "https://rsshub.app/guancha/index",                 # 观察者网（代理）
+    "https://rsshub.app/cctv/news",                     # 央视新闻（代理）
+]
+
+# 生活相关
+LIFE_RSS_FEEDS = [
+    "https://www.zhihu.com/rss",                        # 知乎（直接可用）
+    "https://rsshub.app/guokr",                         # 果壳（代理）
+    "https://rsshub.app/xiachufang/feed",               # 下厨房（代理）
+    "https://rsshub.app/health",                        # 健康新闻（代理）
+]
 def fetch_articles_from_sources(rss_list, limit_per_source=10):
     """抓取新闻，返回去重后的列表（基于标题去重）"""
     articles = []
