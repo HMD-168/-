@@ -7,46 +7,34 @@ from datetime import datetime
 from collections import OrderedDict
 
 # ---------- 半导体行业 RSS 源（每个源取 10 条）----------
+# 半导体行业 RSS 源（含 Bing 搜索 + 已知可用源）
 SEMI_RSS_FEEDS = [
-    # 已确认可用的中文源（海外可访问）
-    "https://wallstreetcn.com/news/rss",                # 华尔街见闻（你已成功）
-    "https://www.36kr.com/feed",                        # 36氪（科技新闻，含半导体）
-    "https://www.ithome.com/rss/",                      # IT之家（你列表中有）
-    # 通过 RSSHub 代理的国内源（稳定）
-    "https://rsshub.app/jiweicn/latest",                # 集微网最新（代理）
-    "https://rsshub.app/semiinsights",                  # 半导体行业观察（代理）
-    "https://rsshub.app/eet-china",                     # EET电子工程专辑（代理）
-    "https://rsshub.app/21ic/news",                     # 21ic中国电子网（代理）
-    "https://rsshub.app/elecfans/news",                 # 电子发烧友（代理）
-    "https://rsshub.app/eeworld/news",                  # EEWorld（代理）
-    # 官方源（部分可用）
-    "https://www.smics.com/cn/news.xml",                # 中芯国际中文新闻
-    "https://www.loongson.cn/news.xml",                 # 龙芯中科（需要确认）
+    "https://wallstreetcn.com/news/rss",                # 华尔街见闻
+    "https://www.36kr.com/feed",                        # 36氪
+    "https://www.ithome.com/rss/",                      # IT之家
+    "https://www.bing.com/news/search?q=中芯国际&format=rss",
+    "https://www.bing.com/news/search?q=龙芯&format=rss",
+    "https://www.bing.com/news/search?q=长江存储&format=rss",
+    "https://www.bing.com/news/search?q=国产CPU&format=rss",
+    "https://www.bing.com/news/search?q=国产存储&format=rss",
+    "https://www.bing.com/news/search?q=半导体+制造+中国&format=rss",
 ]
 
-# 国际战争/冲突
+# 国际战争/冲突（仍用之前能抓到8条的那些，比如 BBC）
 WAR_RSS_FEEDS = [
-    "http://feeds.bbci.co.uk/news/world/rss.xml",       # BBC 世界新闻（可靠）
-    "https://rsshub.app/reuters/world",                 # 路透国际（代理）
-    "https://rsshub.app/aljazeera",                     # 半岛电视台（代理）
-    "https://rsshub.app/globaltimes/world",             # 环球时报国际（代理）
+    "http://feeds.bbci.co.uk/news/world/rss.xml",       # BBC 世界新闻
 ]
 
-# 国内社会热点
+# 国内社会热点（暂时只用 Bing 搜索国内热点关键词）
 DOMESTIC_RSS_FEEDS = [
-    "https://rsshub.app/caixin/roll",                   # 财新网滚动（代理）
-    "https://rsshub.app/thepaper/featured",             # 澎湃新闻精选（代理）
-    "https://rsshub.app/people",                        # 人民网（代理）
-    "https://rsshub.app/guancha/index",                 # 观察者网（代理）
-    "https://rsshub.app/cctv/news",                     # 央视新闻（代理）
+    "https://www.bing.com/news/search?q=中国+社会+热点&format=rss",
+    "https://www.bing.com/news/search?q=国内+新闻&format=rss",
 ]
 
-# 生活相关
+# 生活相关（同样用 Bing 搜索）
 LIFE_RSS_FEEDS = [
-    "https://www.zhihu.com/rss",                        # 知乎（直接可用）
-    "https://rsshub.app/guokr",                         # 果壳（代理）
-    "https://rsshub.app/xiachufang/feed",               # 下厨房（代理）
-    "https://rsshub.app/health",                        # 健康新闻（代理）
+    "https://www.bing.com/news/search?q=生活+健康&format=rss",
+    "https://www.bing.com/news/search?q=科技+生活&format=rss",
 ]
 def fetch_articles_from_sources(rss_list, limit_per_source=10):
     """抓取新闻，返回去重后的列表（基于标题去重）"""
