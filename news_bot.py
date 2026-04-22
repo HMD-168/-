@@ -8,20 +8,24 @@ from collections import OrderedDict
 
 # ---------- 半导体行业 RSS 源（每个源取 10 条）----------
 SEMI_RSS_FEEDS = [
+    # 中文半导体媒体
     "https://www.semiinsights.com/feed",          # 半导体行业观察
     "https://www.jiweicn.com/rss",                # 集微网
+    "https://www.eet-china.com/feed",             # EET电子工程专辑
+    "https://www.21ic.com/rss.xml",               # 21ic中国电子网
+    "https://www.elecfans.com/rss.xml",           # 电子发烧友
+    "https://www.eeworld.com.cn/rss/news",        # EEWorld电子工程世界
+    # 国内厂商官方新闻
+    "https://www.loongson.cn/rss",                # 龙芯中科
+    "https://www.ymtc.com/rss",                   # 长江存储
+    "https://www.smics.com/rss",                  # 中芯国际
+    "https://www.verisilicon.com/rss",            # 芯原股份
+    "https://www.idcquan.com/index/index_1.shtml/rss",            # IDC快讯
+    "https://www.toutiao.com/?channel=tech&source=ch/rss",            #  今日头条
+    # 国际但中文内容
     "https://www.eetimes.com/feed",               # EE Times
     "https://semiengineering.com/feed",           # Semiconductor Engineering
-    "https://wallstreetcn.com/news/rss",          # 华尔街见闻热点
-    "http://feeds.reuters.com/reuters/technologyNews",  # 路透科技
-    "https://nvidianews.nvidia.com/news-releases/rss.xml", # 英伟达
-    "https://pr.tsmc.com/rss",                    # 台积电
-    "https://www.ithome.com/rss/",                # IT之家
-    "https://www.leiphone.com/feed",              # 雷锋网
-    "https://www.eet-china.com/feed",             # EET 电子工程专辑
-    "https://www.moore.ren/feed",                 # 摩尔精英
-    "https://www.digitimes.com/rss",              # Digitimes
-    "https://www.anandtech.com/rss",              # AnandTech
+    "https://wallstreetcn.com/news/rss",          # 华尔街见闻
 ]
 
 # ---------- 社会热点 RSS 源（分三类：战争/国际冲突、国内社会、生活）----------
