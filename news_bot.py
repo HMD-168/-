@@ -3,109 +3,98 @@ import feedparser
 import requests
 import os
 import json
-from datetime import datetime, timedelta, timezone
-from collections import OrderedDict
+from datetime import datetime, timezone, timedelta
 import email.utils
+from collections import OrderedDict
 
+# ---------- 日期处理函数 ----------
 def parse_rfc2822_date(date_str):
-    """尝试解析 RSS 中的日期（支持多种格式）"""
+    """解析 RSS 中的日期（RFC 2822 或 ISO）"""
     if not date_str:
         return None
     try:
-        # 尝试 RFC 2822（如 "Mon, 22 Apr 2024 08:00:00 GMT"）
+        # RFC 2822: "Mon, 22 Apr 2024 08:00:00 GMT"
         return datetime(*email.utils.parsedate(date_str)[:6], tzinfo=timezone.utc)
     except:
         try:
-            # 尝试 ISO 8601
+            # ISO 8601
             return datetime.fromisoformat(date_str.replace('Z', '+00:00'))
         except:
             return None
 
-def is_today(article_date):
-    """判断新闻发布日期是否为今天（UTC时间）"""
-    if not article_date:
+def is_today(date_obj):
+    """判断日期是否为今天（UTC）"""
+    if not date_obj:
         return False
-    # 获取当前 UTC 日期
     today_utc = datetime.now(timezone.utc).date()
-    # 如果文章日期有时区，转换为 UTC 日期
-    if article_date.tzinfo:
-        article_date_utc = article_date.astimezone(timezone.utc).date()
+    if date_obj.tzinfo:
+        date_utc = date_obj.astimezone(timezone.utc).date()
     else:
-        article_date_utc = article_date.date()
-    return article_date_utc == today_utc
+        date_utc = date_obj.date()
+    return date_utc == today_utc
 
-def fetch_articles_from_sources(rss_list, limit_per_source=10, only_today=True):
+# ---------- Bing 新闻搜索 ----------
+def fetch_bing_news(keywords, limit_per_keyword=5, only_today=True):
     """
-    抓取新闻，可选择只保留今天的新闻。
-    返回去重后的列表。
+    从 Bing 新闻搜索 RSS 抓取新闻。
+    keywords: 关键词列表
+    limit_per_keyword: 每个关键词最多取多少条
+    only_today: 是否只保留今天的新闻
     """
     articles = []
     seen_titles = set()
-    for url in rss_list:
+    for kw in keywords:
+        url = f"https://www.bing.com/news/search?q={kw}&format=rss"
         try:
             resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
             resp.raise_for_status()
             feed = feedparser.parse(resp.content)
-            for entry in feed.entries[:limit_per_source]:
+            for entry in feed.entries[:limit_per_keyword]:
                 title = entry.get("title", "").strip()
                 if not title or title in seen_titles:
                     continue
-                
                 # 解析发布时间
-                published_str = entry.get("published", "") or entry.get("pubDate", "") or entry.get("date", "")
-                pub_date = parse_rfc2822_date(published_str)
-                
-                # 如果要求只保留今天的新闻，且没有有效日期或不是今天，跳过
-                if only_today:
-                    if not pub_date or not is_today(pub_date):
-                        continue
-                
+                pub_str = entry.get("published", "") or entry.get("pubDate", "")
+                pub_date = parse_rfc2822_date(pub_str)
+                if only_today and (not pub_date or not is_today(pub_date)):
+                    continue
                 seen_titles.add(title)
                 articles.append({
                     "title": title,
                     "link": entry.get("link", ""),
                     "summary": entry.get("summary", "")[:200],
-                    "source": feed.feed.get("title", url),
-                    "published": published_str
+                    "source": f"Bing搜索-{kw}",
+                    "published": pub_str
                 })
         except Exception as e:
-            print(f"抓取失败 {url}: {e}")
+            print(f"Bing搜索失败 [{kw}]: {e}")
     return articles
 
-# ---------- RSS 源配置 ----------
-# 半导体行业（增加 Bing 搜索国内关键词，确保时效性）
-SEMI_RSS_FEEDS = [
-    "https://wallstreetcn.com/news/rss",                # 华尔街见闻
-    "https://www.36kr.com/feed",                        # 36氪
-    "https://www.ithome.com/rss/",                      # IT之家
-    "https://www.bing.com/news/search?q=中芯国际&format=rss",
-    "https://www.bing.com/news/search?q=龙芯&format=rss",
-    "https://www.bing.com/news/search?q=长江存储&format=rss",
-    "https://www.bing.com/news/search?q=国产CPU&format=rss",
-    "https://www.bing.com/news/search?q=国产存储&format=rss",
-    "https://www.bing.com/news/search?q=半导体+制造+中国&format=rss",
+# ---------- 关键词配置 ----------
+# 半导体行业（制造、芯片、存储、通信设备等）
+SEMI_KEYWORDS = [
+    "半导体制造", "芯片制造", "中芯国际", "龙芯", "长江存储", "国产CPU", "国产存储",
+    "半导体设备", "通信芯片", "存储芯片", "AI芯片", "台积电", "ASML", "光刻机",
+    "集成电路", "第三代半导体", "碳化硅", "氮化镓"
 ]
 
-# 国际战争/冲突（只保留 1 个源，抓取少量）
-WAR_RSS_FEEDS = [
-    "http://feeds.bbci.co.uk/news/world/rss.xml",       # BBC 世界新闻
+# 国际战争/冲突（少量）
+WAR_KEYWORDS = [
+    "俄乌战争", "巴以冲突", "中东局势", "国际冲突"
 ]
 
-# 国内社会热点（用 Bing 搜索国内热点，确保每天有内容）
-DOMESTIC_RSS_FEEDS = [
-    "https://www.bing.com/news/search?q=中国+热点+新闻&format=rss",
-    "https://www.bing.com/news/search?q=国内+今日+热点&format=rss",
-    "https://www.bing.com/news/search?q=社会+热点&format=rss",
+# 国内社会热点
+DOMESTIC_KEYWORDS = [
+    "中国热点新闻", "国内今日热点", "社会热点", "民生新闻", "政策新规"
 ]
 
-# 生活相关（保留少量，也可用 Bing 搜索）
-LIFE_RSS_FEEDS = [
-    "https://www.bing.com/news/search?q=生活+健康&format=rss",
-    "https://www.bing.com/news/search?q=科技+生活&format=rss",
+# 生活相关
+LIFE_KEYWORDS = [
+    "健康生活", "科技生活", "生活小妙招", "饮食健康"
 ]
 
+# ---------- DeepSeek 生成简报 ----------
 def ask_deepseek(semi_articles, war_articles, domestic_articles, life_articles, api_key):
-    """调用 DeepSeek 生成早报，分四个板块"""
     prompt = f"""你是信息分析师。今天是{datetime.now(timezone.utc).strftime('%Y-%m-%d')}。
 请根据以下新闻，生成一份【每日资讯简报】。
 
@@ -121,7 +110,7 @@ def ask_deepseek(semi_articles, war_articles, domestic_articles, life_articles, 
     for idx, art in enumerate(semi_articles, 1):
         prompt += f"{idx}. {art['title']} | {art['summary']} | 链接：{art['link']}\n"
     prompt += "\n--- 国际战争/冲突 ---\n"
-    for idx, art in enumerate(war_articles[:2], 1):  # 最多2条
+    for idx, art in enumerate(war_articles[:2], 1):
         prompt += f"{idx}. {art['title']} | {art['summary']} | 链接：{art['link']}\n"
     prompt += "\n--- 国内社会热点 ---\n"
     for idx, art in enumerate(domestic_articles, 1):
@@ -167,49 +156,50 @@ def send_wechat(content, token):
     except Exception as e:
         print(f"Server酱 推送失败: {e}")
 
+# ---------- 主程序 ----------
 if __name__ == "__main__":
     print("MAIN ENTERED", flush=True)
     
-    print("开始抓取半导体新闻（仅今天）...")
-    semi_news = fetch_articles_from_sources(SEMI_RSS_FEEDS, limit_per_source=15, only_today=True)
-    print(f"半导体新闻抓取到 {len(semi_news)} 条（仅今日）")
+    print("正在从 Bing 搜索半导体新闻...")
+    semi_news = fetch_bing_news(SEMI_KEYWORDS, limit_per_keyword=4, only_today=True)
+    print(f"半导体新闻抓取到 {len(semi_news)} 条（今日）")
     
-    print("开始抓取国际战争/冲突...")
-    war_news = fetch_articles_from_sources(WAR_RSS_FEEDS, limit_per_source=5, only_today=True)
+    print("正在从 Bing 搜索国际战争新闻...")
+    war_news = fetch_bing_news(WAR_KEYWORDS, limit_per_keyword=3, only_today=True)
     print(f"战争新闻抓取到 {len(war_news)} 条")
     
-    print("开始抓取国内社会热点...")
-    domestic_news = fetch_articles_from_sources(DOMESTIC_RSS_FEEDS, limit_per_source=10, only_today=True)
+    print("正在从 Bing 搜索国内社会热点...")
+    domestic_news = fetch_bing_news(DOMESTIC_KEYWORDS, limit_per_keyword=5, only_today=True)
     print(f"国内热点抓取到 {len(domestic_news)} 条")
     
-    print("开始抓取生活相关...")
-    life_news = fetch_articles_from_sources(LIFE_RSS_FEEDS, limit_per_source=8, only_today=True)
+    print("正在从 Bing 搜索生活相关...")
+    life_news = fetch_bing_news(LIFE_KEYWORDS, limit_per_keyword=3, only_today=True)
     print(f"生活新闻抓取到 {len(life_news)} 条")
     
     if not semi_news and not war_news and not domestic_news and not life_news:
-        print("无新闻，退出")
+        print("未抓到任何今日新闻，退出")
         exit(0)
     
     api_key = os.environ.get("DEEPSEEK_API_KEY")
     if not api_key:
-        print("错误：未设置 DEEPSEEK_API_KEY 环境变量")
+        print("错误：未设置 DEEPSEEK_API_KEY")
         exit(1)
     
-    print("调用DeepSeek生成摘要...")
+    print("调用 DeepSeek 生成简报...")
     try:
         report = ask_deepseek(semi_news, war_news, domestic_news, life_news, api_key)
         print("DeepSeek 返回成功")
     except Exception as e:
-        print(f"DeepSeek API 调用失败: {e}")
+        print(f"DeepSeek 调用失败: {e}")
         exit(1)
     
-    print("=== 生成的资讯简报 ===")
+    print("=== 生成的简报 ===")
     print(report)
     print("=== 简报结束 ===")
     
     token = os.environ.get("PUSHPLUS_TOKEN")
     if token:
         send_wechat(report, token)
-        print("已发送到微信")
+        print("已推送到微信")
     else:
-        print("未设置 PUSHPLUS_TOKEN，仅打印报告")
+        print("未设置 PUSHPLUS_TOKEN，仅打印")
