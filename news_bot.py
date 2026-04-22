@@ -5,9 +5,8 @@ import os
 import json
 from datetime import datetime, timezone, timedelta
 import email.utils
-from collections import OrderedDict
 
-# ---------- 日期处理函数 ----------
+# ---------- 日期处理 ----------
 def parse_rfc2822_date(date_str):
     if not date_str:
         return None
@@ -20,7 +19,6 @@ def parse_rfc2822_date(date_str):
             return None
 
 def is_recent(date_obj, hours=48):
-    """判断新闻是否在最近 hours 小时内（默认48小时）"""
     if not date_obj:
         return False
     now = datetime.now(timezone.utc)
@@ -28,17 +26,10 @@ def is_recent(date_obj, hours=48):
         date_utc = date_obj.astimezone(timezone.utc)
     else:
         date_utc = date_obj.replace(tzinfo=timezone.utc)
-    delta = now - date_utc
-    return delta.total_seconds() <= hours * 3600
+    return (now - date_utc).total_seconds() <= hours * 3600
 
-# ---------- Bing 新闻搜索 ----------
-def fetch_bing_news(keywords, limit_per_keyword=8, recent_hours=48):
-    """
-    从 Bing 新闻搜索 RSS 抓取新闻。
-    keywords: 关键词列表
-    limit_per_keyword: 每个关键词最多取多少条
-    recent_hours: 只保留最近多少小时内的新闻（默认48小时，保证有内容）
-    """
+# ---------- Bing 搜索 ----------
+def fetch_bing_news(keywords, limit_per_keyword=6, recent_hours=48):
     articles = []
     seen_titles = set()
     for kw in keywords:
@@ -59,7 +50,7 @@ def fetch_bing_news(keywords, limit_per_keyword=8, recent_hours=48):
                 articles.append({
                     "title": title,
                     "link": entry.get("link", ""),
-                    "summary": entry.get("summary", "")[:200],
+                    "summary": entry.get("summary", "")[:300],
                     "source": f"Bing-{kw}",
                     "published": pub_str
                 })
@@ -67,69 +58,57 @@ def fetch_bing_news(keywords, limit_per_keyword=8, recent_hours=48):
             print(f"Bing搜索失败 [{kw}]: {e}")
     return articles
 
-# ---------- 关键词配置（大幅扩充）----------
-# 半导体行业（制造、芯片、存储、通信设备等）—— 确保每天都有大量新闻
+# ========== 关键词配置 ==========
+# 半导体：制造、技术、产业链、国际政策
 SEMI_KEYWORDS = [
-    "半导体", "芯片", "集成电路", "晶圆", "光刻机", "ASML", "台积电", "中芯国际",
-    "华虹半导体", "长江存储", "长鑫存储", "龙芯", "兆芯", "海光", "飞腾",
-    "国产CPU", "国产GPU", "AI芯片", "存储芯片", "闪存", "DRAM", "NAND",
-    "半导体设备", "北方华创", "中微公司", "半导体材料", "硅片", "光刻胶",
-    "第三代半导体", "碳化硅", "氮化镓", "功率半导体", "IGBT", "MOSFET",
-    "通信芯片", "5G芯片", "物联网芯片", "射频芯片", "模拟芯片",
-    "封装测试", "先进封装", "Chiplet", "RISC-V", "ARM", "x86",
-    "英特尔", "AMD", "英伟达", "高通", "联发科", "三星半导体", "SK海力士",
-    "美光", "德州仪器", "意法半导体", "恩智浦", "Infineon"
+    "半导体制造", "芯片制造技术", "晶圆代工", "台积电 技术", "中芯国际 制程",
+    "光刻机", "ASML 光刻", "半导体设备", "蚀刻机", "薄膜沉积",
+    "第三代半导体", "碳化硅", "氮化镓", "功率半导体",
+    "存储芯片 技术", "DRAM 技术", "NAND 闪存", "长江存储 技术",
+    "Chiplet", "先进封装", "2.5D 封装", "3D 封装",
+    "半导体材料", "硅片", "光刻胶", "电子特气",
+    "半导体政策", "芯片法案", "美国 半导体 出口管制", "欧盟 芯片 法案",
+    "日本 半导体 补贴", "韩国 半导体 政策", "中国 集成电路 政策",
+    "半导体产业链", "芯片供应链", "汽车芯片 供应",
+]
+
+# 社会热点：政策类（国内+国际）
+POLICY_KEYWORDS = [
+    "中国 新政策", "国务院 政策", "发改委 新政", "工信部 发文",
+    "科技创新 政策", "数字经济 政策", "新能源 政策", "环保 新政",
+    "房地产 政策", "教育 改革", "医疗 改革", "社保 新规",
+    "美国 新政策", "欧盟 法规", "国际贸易 政策", "一带一路",
 ]
 
 # 国际战争/冲突（少量）
 WAR_KEYWORDS = [
-    "俄乌战争", "巴以冲突", "中东局势", "也门胡塞", "红海危机", "国际冲突"
+    "俄乌 局势", "巴以 冲突", "中东 局势", "红海 危机"
 ]
 
-# 国内社会热点（增加具体事件类关键词）
-DOMESTIC_KEYWORDS = [
-    "国内热点", "中国社会新闻", "民生热点", "政策新规", "经济数据", "房地产",
-    "教育新闻", "医疗改革", "环保督察", "乡村振兴", "科技创新", "中国航天",
-    "法治新闻", "突发事件", "交通", "天气预警"
-]
-
-# 生活相关
-LIFE_KEYWORDS = [
-    "健康养生", "食品安全", "科技生活", "数码产品", "手机", "新能源汽车",
-    "旅游", "美食", "健身", "心理健康", "育儿", "老年生活"
-]
-
-# ---------- DeepSeek 生成简报 ----------
-def ask_deepseek(semi_articles, war_articles, domestic_articles, life_articles, api_key):
+# ---------- DeepSeek 生成 ----------
+def ask_deepseek(semi_articles, war_articles, policy_articles, api_key):
     prompt = f"""你是信息分析师。今天是{datetime.now(timezone.utc).strftime('%Y-%m-%d')}。
 请根据以下新闻，生成一份【每日资讯简报】。
 
 要求：
-1. 先输出【半导体行业】板块（共{len(semi_articles)}条），每条用一句话概括 + 原文链接，按重要性排序。
-2. 然后输出【国际战争/冲突】板块（共{len(war_articles)}条），最多保留2条最重要的，每条一句话 + 链接。
-3. 接着输出【国内社会热点】板块（共{len(domestic_articles)}条），每条一句话 + 链接。
-4. 最后输出【生活相关】板块（共{len(life_articles)}条），每条一句话 + 链接。
-5. 整体使用 Markdown 格式，标题为【每日资讯简报】。
+1. 先输出【半导体行业】板块（共{len(semi_articles)}条），聚焦制造技术、产业链市场、国际政策与环境。每条用一句话概括 + 原文链接，按重要性排序。
+2. 然后输出【国际战争/冲突】板块（共{len(war_articles)}条），最多2条。
+3. 最后输出【政策/社会热点】板块（共{len(policy_articles)}条），包括国内外重要政策、法规、经济改革等。每条一句话 + 链接。
+4. 使用 Markdown 格式，标题为【每日资讯简报】。
 
---- 半导体行业新闻 ---
+--- 半导体行业 ---
 """
     for idx, art in enumerate(semi_articles, 1):
         prompt += f"{idx}. {art['title']} | {art['summary']} | 链接：{art['link']}\n"
     prompt += "\n--- 国际战争/冲突 ---\n"
     for idx, art in enumerate(war_articles[:2], 1):
         prompt += f"{idx}. {art['title']} | {art['summary']} | 链接：{art['link']}\n"
-    prompt += "\n--- 国内社会热点 ---\n"
-    for idx, art in enumerate(domestic_articles, 1):
-        prompt += f"{idx}. {art['title']} | {art['summary']} | 链接：{art['link']}\n"
-    prompt += "\n--- 生活相关 ---\n"
-    for idx, art in enumerate(life_articles, 1):
+    prompt += "\n--- 政策/社会热点 ---\n"
+    for idx, art in enumerate(policy_articles, 1):
         prompt += f"{idx}. {art['title']} | {art['summary']} | 链接：{art['link']}\n"
     prompt += "\n请直接输出，不要多余的解释。"
 
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     payload = {
         "model": "deepseek-chat",
         "messages": [{"role": "user", "content": prompt}],
@@ -145,45 +124,35 @@ def ask_deepseek(semi_articles, war_articles, domestic_articles, life_articles, 
             raise Exception(f"API错误: {data['error']}")
         else:
             raise Exception(f"未知响应格式: {data}")
-    except requests.exceptions.Timeout:
-        raise Exception("DeepSeek API 请求超时（120秒）")
-    except requests.exceptions.RequestException as e:
-        raise Exception(f"DeepSeek API 请求失败: {e}")
+    except Exception as e:
+        raise Exception(f"DeepSeek 调用失败: {e}")
 
 def send_wechat(content, token):
     url = f"https://sctapi.ftqq.com/{token}.send"
-    data = {
-        "title": f"每日资讯简报 {datetime.now(timezone.utc).strftime('%Y-%m-%d')}",
-        "desp": content,
-    }
+    data = {"title": f"每日资讯简报 {datetime.now(timezone.utc).strftime('%Y-%m-%d')}", "desp": content}
     try:
         resp = requests.post(url, data=data, timeout=10)
         print(f"Server酱 推送响应: {resp.json()}")
     except Exception as e:
         print(f"Server酱 推送失败: {e}")
 
-# ---------- 主程序 ----------
 if __name__ == "__main__":
     print("MAIN ENTERED", flush=True)
     
-    print("正在从 Bing 搜索半导体新闻（扩充关键词）...")
-    semi_news = fetch_bing_news(SEMI_KEYWORDS, limit_per_keyword=5, recent_hours=48)
-    print(f"半导体新闻抓取到 {len(semi_news)} 条（最近48小时）")
+    print("抓取半导体新闻（制造/技术/政策）...")
+    semi = fetch_bing_news(SEMI_KEYWORDS, limit_per_keyword=4, recent_hours=48)
+    print(f"半导体新闻: {len(semi)} 条")
     
-    print("正在从 Bing 搜索国际战争新闻...")
-    war_news = fetch_bing_news(WAR_KEYWORDS, limit_per_keyword=3, recent_hours=48)
-    print(f"战争新闻抓取到 {len(war_news)} 条")
+    print("抓取国际战争新闻...")
+    war = fetch_bing_news(WAR_KEYWORDS, limit_per_keyword=2, recent_hours=72)
+    print(f"战争新闻: {len(war)} 条")
     
-    print("正在从 Bing 搜索国内社会热点...")
-    domestic_news = fetch_bing_news(DOMESTIC_KEYWORDS, limit_per_keyword=4, recent_hours=48)
-    print(f"国内热点抓取到 {len(domestic_news)} 条")
+    print("抓取政策/社会热点...")
+    policy = fetch_bing_news(POLICY_KEYWORDS, limit_per_keyword=5, recent_hours=48)
+    print(f"政策热点: {len(policy)} 条")
     
-    print("正在从 Bing 搜索生活相关...")
-    life_news = fetch_bing_news(LIFE_KEYWORDS, limit_per_keyword=3, recent_hours=48)
-    print(f"生活新闻抓取到 {len(life_news)} 条")
-    
-    if not semi_news and not war_news and not domestic_news and not life_news:
-        print("未抓到任何新闻，退出")
+    if not semi and not war and not policy:
+        print("无新闻，退出")
         exit(0)
     
     api_key = os.environ.get("DEEPSEEK_API_KEY")
@@ -193,7 +162,7 @@ if __name__ == "__main__":
     
     print("调用 DeepSeek 生成简报...")
     try:
-        report = ask_deepseek(semi_news, war_news, domestic_news, life_news, api_key)
+        report = ask_deepseek(semi, war, policy, api_key)
         print("DeepSeek 返回成功")
     except Exception as e:
         print(f"DeepSeek 调用失败: {e}")
