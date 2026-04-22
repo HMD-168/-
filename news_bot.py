@@ -15,12 +15,12 @@ SEMI_RSS_FEEDS = [
     "http://feeds.reuters.com/reuters/technologyNews",  # 路透科技
     "https://nvidianews.nvidia.com/news-releases/rss.xml", # 英伟达
     "https://pr.tsmc.com/rss",                    # 台积电
-    "https://news.samsung.com/global/rss",        # 三星
+    "https://tophub.today/c/tech",        # 今日热榜
     "https://www.ithome.com/rss/",                # IT之家
-    "https://www.leiphone.com/feed",              # 雷锋网
-    "https://www.eet-china.com/feed",             # EET 电子工程专辑
+    "https://www.toutiao.com/?channel=tech&source=ch",              # 今日头条
+    "https://www.idcquan.com/index/index_1.shtml",             # IDC快讯
     "https://www.2ic.cn/feed",                    # 半导体技术天地
-    "https://www.moore.ren/feed",                 # 摩尔精英
+    "https://www.21ic.com/rf",                 # 21ic
 ]
 
 # ---------- 社会热点 RSS 源（至少 10 条）----------
