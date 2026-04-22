@@ -4,58 +4,64 @@ import requests
 import os
 import json
 from datetime import datetime
+from collections import OrderedDict
 
-# ---------- 半导体行业 RSS 源（不限总数，每个源取最新 10 条）----------
+# ---------- 半导体行业 RSS 源（每个源取 10 条）----------
 SEMI_RSS_FEEDS = [
     "https://www.semiinsights.com/feed",          # 半导体行业观察
     "https://www.jiweicn.com/rss",                # 集微网
     "https://www.eetimes.com/feed",               # EE Times
     "https://semiengineering.com/feed",           # Semiconductor Engineering
-    "https://wallstreetcn.com/news/rss",          # 华尔街见闻热点（含科技）
+    "https://wallstreetcn.com/news/rss",          # 华尔街见闻热点
     "http://feeds.reuters.com/reuters/technologyNews",  # 路透科技
     "https://nvidianews.nvidia.com/news-releases/rss.xml", # 英伟达
     "https://pr.tsmc.com/rss",                    # 台积电
-    "https://tophub.today/c/tech",        # 今日热榜
     "https://www.ithome.com/rss/",                # IT之家
-    "https://www.toutiao.com/?channel=tech&source=ch",              # 今日头条
-    "https://www.idcquan.com/index/index_1.shtml",             # IDC快讯
-    "https://www.2ic.cn/feed",                    # 半导体技术天地
-    "https://www.21ic.com/rf",                 # 21ic
+    "https://www.leiphone.com/feed",              # 雷锋网
+    "https://www.eet-china.com/feed",             # EET 电子工程专辑
+    "https://www.moore.ren/feed",                 # 摩尔精英
+    "https://www.digitimes.com/rss",              # Digitimes
+    "https://www.anandtech.com/rss",              # AnandTech
 ]
 
-# ---------- 社会热点 RSS 源（至少 10 条）----------
-HOT_RSS_FEEDS = [
-    "http://feeds.reuters.com/reuters/worldNews",          # 路透国际
+# ---------- 社会热点 RSS 源（分三类：战争/国际冲突、国内社会、生活）----------
+WAR_RSS_FEEDS = [
+    "http://feeds.reuters.com/reuters/worldNews",          # 路透国际（含战争）
     "http://feeds.bbci.co.uk/news/world/rss.xml",          # BBC 世界
+    "https://www.aljazeera.com/xml/rss/news.xml",          # 半岛电视台
+    "https://www.defensenews.com/arc/outboundfeeds/rss/",  # Defense News
+    "https://www.globaltimes.cn/rss/world.xml",            # 环球时报国际
+]
+DOMESTIC_RSS_FEEDS = [
     "http://rss.caixin.com/rollnews.xml",                  # 财新网
-    "https://www.xinhuanet.com/fortune/news_newsroom_index_rss.xml", # 新华社
+    "https://www.thepaper.cn/rss_news.xml",                # 澎湃新闻
     "http://www.people.com.cn/rss/people.xml",             # 人民网
     "https://www.guancha.cn/index.rss",                    # 观察者网
-    "https://www.thepaper.cn/rss_news.xml",                # 澎湃新闻
+    "http://news.cctv.com/xml/news.xml",                   # 央视新闻
+]
+LIFE_RSS_FEEDS = [
+    "https://www.zhihu.com/rss",                           # 知乎（生活/热门）
+    "https://www.guokr.com/rss/",                          # 果壳网（生活科普）
+    "https://www.xiachufang.com/feed/",                    # 下厨房（美食生活）
+    "https://www.healthday.com/rss/",                      # 健康新闻
 ]
 
-def fetch_articles_from_sources(rss_list, limit_per_source=10, min_total=None):
-    """
-    从 RSS 源列表抓取，每个源最多取 limit_per_source 条。
-    如果指定 min_total，则尽量确保总数 >= min_total（通过增加每个源条数）
-    """
+def fetch_articles_from_sources(rss_list, limit_per_source=10):
+    """抓取新闻，返回去重后的列表（基于标题去重）"""
     articles = []
-    # 如果要求最少条数，动态调整每个源的上限
-    if min_total:
-        # 粗略估算：需要抓取的源数量 * limit 至少达到 min_total
-        # 但简单起见，直接增加 limit_per_source 到 20 或更多
-        dynamic_limit = max(limit_per_source, min_total // len(rss_list) + 5)
-    else:
-        dynamic_limit = limit_per_source
-    
+    seen_titles = set()
     for url in rss_list:
         try:
             resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
             resp.raise_for_status()
             feed = feedparser.parse(resp.content)
-            for entry in feed.entries[:dynamic_limit]:
+            for entry in feed.entries[:limit_per_source]:
+                title = entry.get("title", "").strip()
+                if not title or title in seen_titles:
+                    continue
+                seen_titles.add(title)
                 articles.append({
-                    "title": entry.get("title", "无标题"),
+                    "title": title,
                     "link": entry.get("link", ""),
                     "summary": entry.get("summary", "")[:200],
                     "source": feed.feed.get("title", url),
@@ -65,24 +71,30 @@ def fetch_articles_from_sources(rss_list, limit_per_source=10, min_total=None):
             print(f"抓取失败 {url}: {e}")
     return articles
 
-def ask_deepseek(semi_articles, hot_articles, api_key):
-    """调用 DeepSeek 生成早报"""
+def ask_deepseek(semi_articles, war_articles, domestic_articles, life_articles, api_key):
+    """调用 DeepSeek 生成早报，分四个板块"""
     prompt = f"""你是信息分析师。今天是{datetime.now().strftime('%Y-%m-%d')}。
-请根据以下新闻，生成一份【半导体行业早报 + 社会热点速览】。
+请根据以下新闻，生成一份【每日资讯简报】。
 
 要求：
-1. 先输出【半导体行业】板块（共{len(semi_articles)}条），每条用一句话概括发生了什么，并附上原文链接。
-   - 按重要性排序（优先半导体制造、芯片、存储、通信设备等核心领域）。
-2. 然后输出【社会热点】板块（共{len(hot_articles)}条），每条用一句话概括 + 原文链接，按重要性排序。
-3. 最后加一段总结。
-4. 使用 Markdown 格式，标题为【每日资讯简报】。
+1. 先输出【半导体行业】板块（共{len(semi_articles)}条），每条用一句话概括 + 原文链接，按重要性排序。
+2. 然后输出【国际战争/冲突】板块（共{len(war_articles)}条），每条一句话 + 链接。
+3. 接着输出【国内社会热点】板块（共{len(domestic_articles)}条），每条一句话 + 链接。
+4. 最后输出【生活相关】板块（共{len(life_articles)}条），每条一句话 + 链接。
+5. 整体使用 Markdown 格式，标题为【每日资讯简报】。
 
 --- 半导体行业新闻 ---
 """
     for idx, art in enumerate(semi_articles, 1):
         prompt += f"{idx}. {art['title']} | {art['summary']} | 链接：{art['link']}\n"
-    prompt += "\n--- 社会热点新闻 ---\n"
-    for idx, art in enumerate(hot_articles, 1):
+    prompt += "\n--- 国际战争/冲突 ---\n"
+    for idx, art in enumerate(war_articles, 1):
+        prompt += f"{idx}. {art['title']} | {art['summary']} | 链接：{art['link']}\n"
+    prompt += "\n--- 国内社会热点 ---\n"
+    for idx, art in enumerate(domestic_articles, 1):
+        prompt += f"{idx}. {art['title']} | {art['summary']} | 链接：{art['link']}\n"
+    prompt += "\n--- 生活相关 ---\n"
+    for idx, art in enumerate(life_articles, 1):
         prompt += f"{idx}. {art['title']} | {art['summary']} | 链接：{art['link']}\n"
     prompt += "\n请直接输出，不要多余的解释。"
 
@@ -96,7 +108,7 @@ def ask_deepseek(semi_articles, hot_articles, api_key):
         "temperature": 0.3,
     }
     try:
-        resp = requests.post("https://api.deepseek.com/v1/chat/completions", headers=headers, json=payload, timeout=90)
+        resp = requests.post("https://api.deepseek.com/v1/chat/completions", headers=headers, json=payload, timeout=120)
         resp.raise_for_status()
         data = resp.json()
         if "choices" in data and len(data["choices"]) > 0:
@@ -106,7 +118,7 @@ def ask_deepseek(semi_articles, hot_articles, api_key):
         else:
             raise Exception(f"未知响应格式: {data}")
     except requests.exceptions.Timeout:
-        raise Exception("DeepSeek API 请求超时（90秒）")
+        raise Exception("DeepSeek API 请求超时（120秒）")
     except requests.exceptions.RequestException as e:
         raise Exception(f"DeepSeek API 请求失败: {e}")
 
@@ -126,15 +138,23 @@ def send_wechat(content, token):
 if __name__ == "__main__":
     print("MAIN ENTERED", flush=True)
     
-    print("开始抓取半导体新闻（不限数量，每个源最多10条）...")
+    print("开始抓取半导体新闻...")
     semi_news = fetch_articles_from_sources(SEMI_RSS_FEEDS, limit_per_source=10)
     print(f"半导体新闻抓取到 {len(semi_news)} 条")
     
-    print("开始抓取社会热点（至少10条）...")
-    hot_news = fetch_articles_from_sources(HOT_RSS_FEEDS, limit_per_source=5, min_total=10)
-    print(f"社会热点抓取到 {len(hot_news)} 条")
+    print("开始抓取国际战争/冲突...")
+    war_news = fetch_articles_from_sources(WAR_RSS_FEEDS, limit_per_source=8)
+    print(f"战争新闻抓取到 {len(war_news)} 条")
     
-    if not semi_news and not hot_news:
+    print("开始抓取国内社会热点...")
+    domestic_news = fetch_articles_from_sources(DOMESTIC_RSS_FEEDS, limit_per_source=8)
+    print(f"国内热点抓取到 {len(domestic_news)} 条")
+    
+    print("开始抓取生活相关...")
+    life_news = fetch_articles_from_sources(LIFE_RSS_FEEDS, limit_per_source=6)
+    print(f"生活新闻抓取到 {len(life_news)} 条")
+    
+    if not semi_news and not war_news and not domestic_news and not life_news:
         print("无新闻，退出")
         exit(0)
     
@@ -145,7 +165,7 @@ if __name__ == "__main__":
     
     print("调用DeepSeek生成摘要...")
     try:
-        report = ask_deepseek(semi_news, hot_news, api_key)
+        report = ask_deepseek(semi_news, war_news, domestic_news, life_news, api_key)
         print("DeepSeek 返回成功")
     except Exception as e:
         print(f"DeepSeek API 调用失败: {e}")
